@@ -1,73 +1,62 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import motor.motor_asyncio
+from fastapi.responses import JSONResponse
 
+# Initialize the FastAPI app
 app = FastAPI()
 
-# Connect to Mongo Atlas
-client = motor.motor_asyncio.AsyncIOMotorClient("mongodb+srv://michelequispe15:italia@cluster.mongodb.net/databaseAssignment?retryWrites=true&w=majority")
+# MongoDB connection
+client = motor.motor_asyncio.AsyncIOMotorClient("mongodb+srv://<michelequispe15>:<margoux1926>@cluster.mongodb.net/databaseAssignment?retryWrites=true&w=majority")
 db = client.databaseAssignment
 
+# Pydantic models for input validation
 class PlayerScore(BaseModel):
-    player_name: str
-    score: int
+    player_name: str = Field(..., min_length=1, max_length=50, description="name of the player")
+    score: int = Field(..., gt=0, description="The player's score")
 
-# POST: Upload Sprite
+# Endpoint: Upload a Sprite
 @app.post("/upload_sprite")
 async def upload_sprite(file: UploadFile = File(...)):
-    content = await file.read()
-    sprite_doc = {"filename": file.filename, "content": content}
-    result = await db.sprites.insert_one(sprite_doc)
-    return {"message": "Sprite uploaded", "id": str(result.inserted_id)}
+    try:
+        content = await file.read()
+        sprite_doc = {"filename": file.filename, "content": content}
+        result = await db.sprites.insert_one(sprite_doc)
+        return {"message": "Sprite uploaded", "id": str(result.inserted_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to upload sprite. Error: " + str(e))
 
-# POST: Upload Audio
+# Endpoint: Upload an Audio File
 @app.post("/upload_audio")
 async def upload_audio(file: UploadFile = File(...)):
-    content = await file.read()
-    audio_doc = {"filename": file.filename, "content": content}
-    result = await db.audio_files.insert_one(audio_doc)
-    return {"message": "Audio file uploaded", "id": str(result.inserted_id)}
+    try:
+        content = await file.read()
+        audio_doc = {"filename": file.filename, "content": content}
+        result = await db.audio_files.insert_one(audio_doc)
+        return {"message": "Audio file uploaded successfully", "id": str(result.inserted_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to upload audio file. Error: " + str(e))
 
-# POST: Add Player Score
+# Endpoint: Add Player Score
 @app.post("/player_score")
 async def add_score(score: PlayerScore):
-    score_doc = score.model_dump()
-    result = await db.player_scores.insert_one(score_doc)
-    return {"message": "Score recorded", "id": str(result.inserted_id)}
+    try:
+        score_doc = score.dict()
+        result = await db.player_scores.insert_one(score_doc)
+        return {"message": "Score recorded successfully", "id": str(result.inserted_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to record player score. Error: " + str(e))
 
-# GET: Retrieve All Sprites
-@app.get("/sprites")
-async def get_sprites():
-    sprites = await db.sprites.find().to_list(100)
-    return {"sprites": sprites}
+# Endpoint: Get All Scores
+@app.get("/player_scores")
+async def get_scores():
+    try:
+        scores = await db.player_scores.find().to_list(100)
+        return {"scores": scores}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch player scores. Error: " + str(e))
 
-# GET: Retrieve a Sprite by Filename
-@app.get("/sprite/{filename}")
-async def get_sprite(filename: str):
-    sprite = await db.sprites.find_one({"filename": filename})
-    if sprite:
-        return {"sprite": sprite}
-    raise HTTPException(status_code=404, detail="Sprite not found")
-
-# PUT: Update Player Score
-@app.put("/player_score/{player_name}")
-async def update_score(player_name: str, score: int):
-    result = await db.player_scores.update_one(
-        {"player_name": player_name},
-        {"$set": {"score": score}}
-    )
-    if result.modified_count == 1:
-        return {"message": "Score updated"}
-    raise HTTPException(status_code=404, detail="Player not found")
-
-# DELETE: Remove a Sprite by Filename
-@app.delete("/sprite/{filename}")
-async def delete_sprite(filename: str):
-    result = await db.sprites.delete_one({"filename": filename})
-    if result.deleted_count == 1:
-        return {"message": "Sprite deleted"}
-    raise HTTPException(status_code=404, detail="Sprite not found")
-
+# Endpoint: Health Check (Optional)
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the Multimedia API! Use /docs to explore the endpoints."}
+    return {"message": "Testing API."}
